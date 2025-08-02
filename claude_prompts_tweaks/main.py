@@ -2,20 +2,18 @@
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional, Union
 
 import click
 from rich.console import Console
 from rich.table import Table
-from rich.syntax import Syntax
-from rich.progress import track
 
 console = Console()
 
 
 @click.group()
 @click.version_option()
-def cli():
+def cli() -> None:
     """Claude Prompts Tweaks - Analyze and process Claude Code system prompts."""
     pass
 
@@ -24,7 +22,7 @@ def cli():
 @click.argument('json_file', type=click.Path(exists=True, path_type=Path))
 @click.option('--output', '-o', type=click.Path(path_type=Path), help='Output file path')
 @click.option('--format', 'output_format', type=click.Choice(['json', 'md', 'txt']), default='json', help='Output format')
-def analyze(json_file: Path, output: Optional[Path], output_format: str):
+def analyze(json_file: Path, output: Optional[Path], output_format: str) -> None:
     """Analyze Claude Code prompt JSON files."""
     console.print(f"[green]Analyzing {json_file}...[/green]")
     
@@ -48,7 +46,7 @@ def analyze(json_file: Path, output: Optional[Path], output_format: str):
 @click.argument('json_file', type=click.Path(exists=True, path_type=Path))
 @click.option('--pattern', '-p', help='Search pattern (regex supported)')
 @click.option('--category', '-c', help='Filter by category')
-def search(json_file: Path, pattern: Optional[str], category: Optional[str]):
+def search(json_file: Path, pattern: Optional[str], category: Optional[str]) -> None:
     """Search through prompts for specific patterns or categories."""
     console.print(f"[green]Searching in {json_file}...[/green]")
     
@@ -66,7 +64,7 @@ def search(json_file: Path, pattern: Optional[str], category: Optional[str]):
 @cli.command()
 @click.argument('json_file', type=click.Path(exists=True, path_type=Path))
 @click.option('--output', '-o', type=click.Path(path_type=Path), help='Output markdown file')
-def extract(json_file: Path, output: Optional[Path]):
+def extract(json_file: Path, output: Optional[Path]) -> None:
     """Extract prompts to a readable markdown format."""
     console.print(f"[green]Extracting prompts from {json_file}...[/green]")
     
@@ -87,18 +85,18 @@ def extract(json_file: Path, output: Optional[Path]):
         console.print(f"[red]Error extracting prompts: {e}[/red]")
 
 
-def _analyze_prompts(data: dict) -> dict:
+def _analyze_prompts(data: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze prompt data and return statistics."""
-    stats = {
+    stats: Dict[str, Any] = {
         'total_categories': 0,
         'total_prompts': 0,
         'categories': {},
-        'avg_prompt_length': 0,
+        'avg_prompt_length': 0.0,
         'longest_prompt': '',
         'shortest_prompt': ''
     }
     
-    all_prompts = []
+    all_prompts: List[Any] = []
     
     if isinstance(data, dict):
         for key, value in data.items():
@@ -129,7 +127,7 @@ def _analyze_prompts(data: dict) -> dict:
     return stats
 
 
-def _display_stats(stats: dict):
+def _display_stats(stats: Dict[str, Any]) -> None:
     """Display analysis statistics in a formatted table."""
     table = Table(title="Prompt Analysis Statistics")
     table.add_column("Metric", style="cyan")
@@ -152,13 +150,13 @@ def _display_stats(stats: dict):
         console.print(cat_table)
 
 
-def _search_prompts(data: dict, pattern: Optional[str], category: Optional[str]) -> list:
+def _search_prompts(data: Dict[str, Any], pattern: Optional[str], category: Optional[str]) -> List[Dict[str, Any]]:
     """Search prompts based on pattern and category."""
     import re
     
-    results = []
+    results: List[Dict[str, Any]] = []
     
-    def search_in_list(prompts: list, cat_name: str):
+    def search_in_list(prompts: List[Any], cat_name: str) -> None:
         for i, prompt in enumerate(prompts):
             prompt_str = str(prompt)
             if pattern and not re.search(pattern, prompt_str, re.IGNORECASE):
@@ -184,7 +182,7 @@ def _search_prompts(data: dict, pattern: Optional[str], category: Optional[str])
     return results
 
 
-def _display_search_results(results: list):
+def _display_search_results(results: List[Dict[str, Any]]) -> None:
     """Display search results."""
     if not results:
         console.print("[yellow]No results found.[/yellow]")
@@ -200,7 +198,7 @@ def _display_search_results(results: list):
         console.print("-" * 80)
 
 
-def _extract_to_markdown(data: dict) -> str:
+def _extract_to_markdown(data: Dict[str, Any]) -> str:
     """Extract prompts to markdown format."""
     markdown_lines = [
         "# Claude Code System Prompts",
@@ -209,7 +207,7 @@ def _extract_to_markdown(data: dict) -> str:
         ""
     ]
     
-    def process_prompts(prompts: list, category_name: str, level: int = 2):
+    def process_prompts(prompts: List[Any], category_name: str, level: int = 2) -> None:
         markdown_lines.append(f"{'#' * level} {category_name}")
         markdown_lines.append("")
         
@@ -231,7 +229,7 @@ def _extract_to_markdown(data: dict) -> str:
     return "\n".join(markdown_lines)
 
 
-def _save_analysis(stats: dict, output_path: Path, format: str):
+def _save_analysis(stats: Dict[str, Any], output_path: Path, format: str) -> None:
     """Save analysis results to file."""
     if format == 'json':
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -246,7 +244,7 @@ def _save_analysis(stats: dict, output_path: Path, format: str):
             f.write(content)
 
 
-def _stats_to_markdown(stats: dict) -> str:
+def _stats_to_markdown(stats: Dict[str, Any]) -> str:
     """Convert stats to markdown format."""
     lines = [
         "# Prompt Analysis Results",
@@ -265,7 +263,7 @@ def _stats_to_markdown(stats: dict) -> str:
     return "\n".join(lines)
 
 
-def _stats_to_text(stats: dict) -> str:
+def _stats_to_text(stats: Dict[str, Any]) -> str:
     """Convert stats to plain text format."""
     lines = [
         "PROMPT ANALYSIS RESULTS",

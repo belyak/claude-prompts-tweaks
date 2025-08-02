@@ -1,5 +1,10 @@
 # Claude Prompts Tweaks
 
+[![CI](https://github.com/belyak/claude-prompts-tweaks/actions/workflows/ci.yml/badge.svg)](https://github.com/belyak/claude-prompts-tweaks/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
 A CLI utility for analyzing and processing Claude Code system prompts and instructions.
 
 ## Features
@@ -51,8 +56,40 @@ The utility comes with pre-loaded Claude Code prompt research files:
 
 ## Development
 
-Built with:
-- Python 3.12+
-- Click for CLI interface
-- Rich for beautiful terminal output
-- Pydantic for data validation
+### Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/belyak/claude-prompts-tweaks.git
+cd claude-prompts-tweaks
+
+# Install development dependencies
+make install-dev
+
+# Run tests
+make test
+
+# Format code
+make format
+
+# Run all quality checks
+make lint type-check test
+```
+
+### Tools and Standards
+
+- **Python 3.12+** with full type annotations
+- **uv** for dependency management
+- **Black** for code formatting (88 char line length)
+- **isort** for import sorting
+- **mypy** for static type checking (strict mode)
+- **pytest** for testing with 90%+ coverage requirement
+- **pre-commit** hooks for automated quality checks
+
+### Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+## License
+
+This project is open source. Please check the repository for license details.
