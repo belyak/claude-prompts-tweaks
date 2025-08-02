@@ -1,0 +1,123 @@
+name: Dependency Update
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Update dependencies
+      id: update
+      run: |
+        # Update all dependencies
+        uv lock --upgrade
+        
+        # Check if there are changes
+        if git diff --quiet uv.lock; then
+          echo "No dependency updates available"
+          echo "has_updates=false" >> $GITHUB_OUTPUT
+        else
+          echo "Dependencies updated"
+          echo "has_updates=true" >> $GITHUB_OUTPUT
+          
+          # Generate update summary
+          echo "## Dependency Updates" > update_summary.md
+          echo "" >> update_summary.md
+          echo "### Updated packages:" >> update_summary.md
+          git diff uv.lock | grep "^+" | grep -E "name|version" | sed 's/^+//' >> update_summary.md
+        fi
+    
+    - name: Run tests with updated dependencies
+      if: steps.update.outputs.has_updates == 'true'
+      run: |
+        uv sync --frozen --all-extras
+        uv run pytest --no-cov -x
+    
+    - name: Create Pull Request
+      if: steps.update.outputs.has_updates == 'true'
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "chore: update dependencies"
+        title: "chore: update dependencies"
+        body-path: update_summary.md
+        branch: dependency-updates
+        delete-branch: true
+        labels: |
+          dependencies
+          automated
+        assignees: ${{ github.repository_owner }}
+
+  security-update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Install dependencies
+      run: uv sync --frozen --all-extras
+    
+    - name: Check for security vulnerabilities
+      id: security
+      run: |
+        # Run pip-audit and capture results
+        if uv run pip-audit --fix --dry-run > audit_results.txt 2>&1; then
+          echo "No security vulnerabilities found"
+          echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+        else
+          echo "Security vulnerabilities found"
+          echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+          
+          # Generate security report
+          echo "## Security Vulnerability Report" > security_report.md
+          echo "" >> security_report.md
+          echo "### Vulnerabilities found:" >> security_report.md
+          cat audit_results.txt >> security_report.md
+        fi
+    
+    - name: Create Security Issue
+      if: steps.security.outputs.has_vulnerabilities == 'true'
+      uses: imjohnbo/issue-bot@v3
+      with:
+        assignees: ${{ github.repository_owner }}
+        labels: security,high-priority
+        title: "Security: Vulnerabilities detected in dependencies"
+        body: |
+          Security vulnerabilities have been detected in the project dependencies.
+          
+          Please review the attached report and take appropriate action.
+          
+          <details>
+          <summary>Vulnerability Report</summary>
+          
+          ```
+          ${{ steps.security.outputs.report }}
+          ```
+          </details>
+          
+          Run `uv run pip-audit --fix` to attempt automatic fixes.

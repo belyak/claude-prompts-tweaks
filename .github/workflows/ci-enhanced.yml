@@ -1,0 +1,277 @@
+name: CI Enhanced
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  schedule:
+    # Run security scans weekly
+    - cron: '0 0 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_CACHE_DIR: ~/.cache/uv
+  PYTEST_XDIST_WORKER_COUNT: auto
+
+jobs:
+  # Fast quality checks that run in parallel
+  quality-checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [format, imports, type-check, lint, security]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Install dependencies
+      run: uv sync --frozen --all-extras
+    
+    - name: Run ${{ matrix.check }}
+      run: |
+        case "${{ matrix.check }}" in
+          format)
+            uv run black --check .
+            ;;
+          imports)
+            uv run isort --check-only .
+            ;;
+          type-check)
+            uv run mypy claude_prompts_tweaks --strict
+            ;;
+          lint)
+            uv run ruff check .
+            uv run pylint claude_prompts_tweaks --fail-under=9.0
+            ;;
+          security)
+            uv run bandit -r claude_prompts_tweaks -ll
+            uv run safety check --json
+            uv run pip-audit
+            ;;
+        esac
+
+  test:
+    needs: quality-checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+        exclude:
+          # Reduce matrix size for faster CI
+          - os: windows-latest
+            python-version: '3.10'
+          - os: macos-latest
+            python-version: '3.10'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better analysis
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: uv sync --frozen --all-extras
+    
+    - name: Run tests with coverage
+      run: |
+        uv run pytest -v \
+          --cov=claude_prompts_tweaks \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-report=html \
+          --cov-fail-under=90 \
+          --benchmark-disable \
+          -n auto
+      env:
+        COVERAGE_FILE: .coverage.${{ matrix.os }}.${{ matrix.python-version }}
+    
+    - name: Run mutation testing (main branch only)
+      if: github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+      run: |
+        uv run mutmut run --paths-to-mutate=claude_prompts_tweaks --runner="pytest -x"
+        uv run mutmut results
+    
+    - name: Upload coverage data
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-${{ matrix.os }}-${{ matrix.python-version }}
+        path: |
+          .coverage.*
+          coverage.xml
+          htmlcov/
+    
+    - name: Performance benchmarks
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+      run: |
+        uv run pytest tests/benchmarks/ --benchmark-only --benchmark-json=benchmark.json
+    
+    - name: Upload benchmark results
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark.json
+
+  coverage-report:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Install coverage
+      run: uv pip install coverage[toml]
+    
+    - name: Download all coverage data
+      uses: actions/download-artifact@v4
+      with:
+        pattern: coverage-*
+        merge-multiple: true
+    
+    - name: Combine coverage data
+      run: |
+        uv run coverage combine .coverage.*
+        uv run coverage xml
+        uv run coverage report --fail-under=90
+        uv run coverage html
+    
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: true
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    
+    - name: Upload HTML report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
+    
+    - name: Comment PR with coverage
+      if: github.event_name == 'pull_request'
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+        GITHUB_TOKEN: ${{ github.token }}
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # For versioning
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Install build dependencies
+      run: uv sync --frozen --all-extras
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Check distribution
+      run: |
+        uv run twine check dist/*
+        uv run check-wheel-contents dist/*.whl
+    
+    - name: Test installation
+      run: |
+        uv venv test-env
+        uv pip install --python test-env dist/*.whl
+        uv run --python test-env claude-prompts-tweaks --version
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+  docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Install dependencies
+      run: uv sync --frozen --extra docs
+    
+    - name: Build documentation
+      run: |
+        uv run sphinx-build -b html docs docs/_build/html -W --keep-going
+        uv run sphinx-build -b linkcheck docs docs/_build/linkcheck
+    
+    - name: Upload documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: docs
+        path: docs/_build/html/
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, coverage-report]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Python Semantic Release
+      id: release
+      uses: python-semantic-release/python-semantic-release@v9.8.8
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Publish to PyPI
+      if: steps.release.outputs.released == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
