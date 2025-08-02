@@ -26,7 +26,7 @@ jobs:
       run: uv python install ${{ matrix.python-version }}
     
     - name: Install dependencies
-      run: uv sync --frozen --extra dev
+      run: uv sync --frozen --dev
     
     - name: Lint with black
       run: uv run black --check .
