@@ -1,0 +1,18 @@
+[project]
+name = "claude-prompts-tweaks"
+version = "0.1.0"
+description = "CLI utility for analyzing and processing Claude Code system prompts and instructions"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.0.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+claude-prompts-tweaks = "claude_prompts_tweaks.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
